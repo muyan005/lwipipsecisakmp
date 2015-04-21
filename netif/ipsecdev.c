@@ -1,0 +1,697 @@
+/*
+ * embedded IPsec
+ * Copyright (c) 2003 Niklaus Schild and Christian Scheurer, HTI Biel/Bienne
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the documentation
+ *    and/or other materials provided with the distribution.
+ * 3. The name of the author may not be used to endorse or promote products
+ *    derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT
+ * SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT
+ * OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
+ * IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+ * OF SUCH DAMAGE.
+ *
+ */
+
+/** @file ipsecdev.c
+ *  @brief IPsec network adapter for lwIP
+ *
+ *  @author Christian Scheurer <http://www.christianscheurer.ch> <BR>
+ *
+ *  <B>OUTLINE:</B>
+ *
+ *  This network interface will be inserted between the TCP/IP stack and the
+ *  driver of the physical network adapter. With this, all inbound and outbound 
+ *  traffic can be intercepted and forwarded to the IPsec stack if required.
+ *
+ *  <B>IMPLEMENTATION:</B>
+ *
+ *  The main duty of ipsecdev device is to identify the network traffic and
+ *  forward it to the appropriate protocol handler:
+ *
+ *     - AH/ESP => forward to ipsec_input()
+ *     - IP traffic with policy BYPASS => forward to ip_input()
+ *     - IP traffic with policy DISCARD, or traffic with policy APPLY but without
+ *       IPsec header
+ *
+ *  To decide how packets must be processed, a lookup in the Security Policy
+ *  Database is required. With this, all IPsec logic and IPsec related processing
+ *  is put outside ipsecdev. The motivation is to separate IPsec processing from
+ *  TCP/IP-Stack and network driver peculiaritipsecdev_netlink_outputies. 
+ *  If the ipsec stack need to be ported to an other target, all major changes
+ *  can be done in this module while the rest can be left untouched.  
+ *
+ *  <B>NOTES:</B>
+ *
+ * This version of ipsecdev is able to handle traffic passed by a cs8900 driver
+ * in combination with lwIP 0.6.3 STABLE. It has a similar structure as dumpdev
+ * or cs9800if.
+ *
+ * This document is part of <EM>embedded IPsec<BR>
+ * Copyright (c) 2003 Niklaus Schild and Christian Scheurer, HTI Biel/Bienne<BR>
+ * All rights reserved.</EM><HR>
+ */
+
+
+
+
+#include "netif/ipsecdev.h"
+#include "lwip/mem.h"
+#include "lwip/ip4.h"
+#include "lwip/def.h"
+
+#include "ipsec/debug.h"
+#include "ipsec/ipsec.h"
+#include "ipsec/util.h"
+#include "ipsec/sa.h"
+
+#include <stdio.h>
+
+#define IPSECDEV_NAME0 'i'		/**< 1st letter of device name "is" */
+#define IPSECDEV_NAME1 's' 		/**< 2nd letter of device name "is" */
+
+//extern sad_entry inbound_sad_config[]; /**< inbound SAD configuration data  */
+//extern spd_entry inbound_spd_config[]; /**< inbound SPD configuration data  */
+//extern sad_entry outbound_sad_config[];/**< outbound SAD configuration data */
+//extern spd_entry outbound_spd_config[];/**< outbound SPD configuration data */
+
+/*
+ sad_entry inbound_sad_config[]; 
+ spd_entry inbound_spd_config[]; 
+ sad_entry outbound_sad_config[];
+ spd_entry outbound_spd_config[];
+
+*/
+
+/**************************/
+/* inbound configurations */
+/**************************/
+	
+/* SAD configuartion data */
+
+
+ 
+
+//esp
+ sad_entry inbound_sad_config[IPSEC_MAX_SAD_ENTRIES] = {
+	SAD_ENTRY(	192,168,12,201, 255,255,255,0, 
+				0x1234, 
+				IPSEC_PROTO_ESP	, IPSEC_TRANSPORT, 
+				 IPSEC_3DES, 
+				0x01, 0x23, 0x45, 0x67, 0x01, 0x23, 0x45, 0x67, 0x01, 0x23, 0x45, 0x67, 0x01, 0x23, 0x45, 0x67, 0x01, 0x23, 0x45, 0x67, 0x01, 0x23, 0x45, 0x67,
+				IPSEC_HMAC_MD5,  
+				0xb3, 0x41, 0xaa, 0x06, 0x5c, 0x38, 0x50,0xed ,0xd6 , 0xa6,0x1e ,0x15 ,0x0d , 0x6a,0x5f ,0xd3 , 0, 0, 0, 0
+			  ),
+	SAD_ENTRY(	192,168,12,214, 255,255,255,0, 
+				0x1235, 
+				IPSEC_PROTO_ESP	, IPSEC_TRANSPORT, 
+				 IPSEC_3DES, 
+				0x01, 0x23, 0x45, 0x67, 0x01, 0x23, 0x45, 0x67, 0x01, 0x23, 0x45, 0x67, 0x01, 0x23, 0x45, 0x67, 0x01, 0x23, 0x45, 0x67, 0x01, 0x23, 0x45, 0x67,
+				IPSEC_HMAC_MD5,  
+				0xb3, 0x41, 0xaa, 0x06, 0x5c, 0x38, 0x50,0xed ,0xd6 , 0xa6,0x1e ,0x15 ,0x0d , 0x6a,0x5f ,0xd3 , 0, 0, 0, 0
+			  ),
+			  EMPTY_SAD_ENTRY,
+			  EMPTY_SAD_ENTRY,
+			  EMPTY_SAD_ENTRY
+
+} ;
+
+/* 
+
+
+//AH
+
+sad_entry inbound_sad_config[IPSEC_MAX_SAD_ENTRIES] = {
+	SAD_ENTRY(	192,168,12,200, 255,255,255,0, 
+				0x1234, 
+				IPSEC_PROTO_AH	, IPSEC_TUNNEL, 
+				 0, 
+				 0,0,0,0,0,0,0,0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+				IPSEC_HMAC_MD5,  
+				0xb3, 0x41, 0xaa, 0x06, 0x5c, 0x38, 0x50,0xed ,0xd6 , 0xa6,0x1e ,0x15 ,0x0d , 0x6a,0x5f ,0xd3 , 0, 0, 0, 0
+			  ),
+	SAD_ENTRY(	192,168,12,214, 255,255,255,0, 
+				0x1235, 
+				IPSEC_PROTO_AH	, IPSEC_TRANSPORT, 
+				 0, 
+				 0,0,0,0,0,0,0,0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+				IPSEC_HMAC_MD5,  
+				0xb3, 0x41, 0xaa, 0x06, 0x5c, 0x38, 0x50,0xed ,0xd6 , 0xa6,0x1e ,0x15 ,0x0d , 0x6a,0x5f ,0xd3 , 0, 0, 0, 0
+			  ),
+			  EMPTY_SAD_ENTRY,
+			  EMPTY_SAD_ENTRY,
+			  EMPTY_SAD_ENTRY
+
+} ;
+
+ */
+
+/* SPD configuration data */
+spd_entry inbound_spd_config[IPSEC_MAX_SAD_ENTRIES] = {
+/*            source                            destination                    protocol  ports         policy          SA pointer *
+ *            address          network          address       network                    src    dest                              */
+	{ SPD_ENTRY(  192,168,12,201, 255,255,255,0, 192,168,12,211,  255,255,255,0, 0, 		 0,     0,     POLICY_BYPASS,   &inbound_sad_config[0]) },
+	{ SPD_ENTRY(  192,168,12,207, 255,255,255,0, 192,168,12,211,  255,255,255,0, 0, 		 0,     0,     POLICY_BYPASS,   &inbound_sad_config[0]) },
+	{ SPD_ENTRY(  192,168,12,208, 255,255,255,0, 192,168,12,211,  255,255,255,0, 0, 		 0,     0,     POLICY_BYPASS,   &inbound_sad_config[0]) },
+	{ SPD_ENTRY(  192,168,12,214, 255,255,255,0, 192,168,12,211,  255,255,255,0, 0, 		 0,     0,     POLICY_BYPASS,   &inbound_sad_config[1]) },
+	{ SPD_ENTRY(  192,168,12,218, 255,255,255,0, 192,168,12,211,  255,255,255,0, 0, 		 0,     0,     POLICY_BYPASS,   &inbound_sad_config[0]) },
+	{ SPD_ENTRY(  192,168,12,220, 255,255,255,0, 192,168,12,211,  255,255,255,0, 0, 		 0,     0,     POLICY_BYPASS,   &inbound_sad_config[1]) },
+	EMPTY_SPD_ENTRY,
+	EMPTY_SPD_ENTRY
+} ;
+
+
+/***************************/
+/* outbound configurations */
+/***************************/
+
+/* SAD configuartion data */
+
+
+// esp APPLY
+sad_entry outbound_sad_config[IPSEC_MAX_SAD_ENTRIES] = {
+	SAD_ENTRY(	192,168,12,201, 255,255,255,0, 
+				0x1234, 
+				IPSEC_PROTO_ESP	, IPSEC_TRANSPORT, 
+				IPSEC_3DES, 
+				0x01, 0x23, 0x45, 0x67, 0x01, 0x23, 0x45, 0x67, 0x01, 0x23, 0x45, 0x67, 0x01, 0x23, 0x45, 0x67, 0x01, 0x23, 0x45, 0x67, 0x01, 0x23, 0x45, 0x67,
+				IPSEC_HMAC_MD5,  
+				0xb3, 0x41, 0xaa, 0x06, 0x5c, 0x38, 0x50,0xed ,0xd6 , 0xa6,0x1e ,0x15 ,0x0d , 0x6a,0x5f ,0xd3 , 0, 0, 0, 0
+			  ),
+	SAD_ENTRY(	192,168,12,214, 255,255,255,0, 
+				0x1235, 
+				IPSEC_PROTO_ESP	, IPSEC_TRANSPORT, 
+				IPSEC_3DES, 
+				0x01, 0x23, 0x45, 0x67, 0x01, 0x23, 0x45, 0x67, 0x01, 0x23, 0x45, 0x67, 0x01, 0x23, 0x45, 0x67, 0x01, 0x23, 0x45, 0x67, 0x01, 0x23, 0x45, 0x67,
+				IPSEC_HMAC_MD5,  
+				0xb3, 0x41, 0xaa, 0x06, 0x5c, 0x38, 0x50,0xed ,0xd6 , 0xa6,0x1e ,0x15 ,0x0d , 0x6a,0x5f ,0xd3 , 0, 0, 0, 0
+			  ),
+	EMPTY_SAD_ENTRY,			  
+	EMPTY_SAD_ENTRY,
+	EMPTY_SAD_ENTRY
+} ;
+/*
+
+//AH
+
+sad_entry outbound_sad_config[IPSEC_MAX_SAD_ENTRIES] = {
+	SAD_ENTRY(	192,168,12,200, 255,255,255,0, 
+				0x1234, 
+				IPSEC_PROTO_AH	, IPSEC_TUNNEL, 
+				0, 
+				 0,0,0,0,0,0,0,0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+				IPSEC_HMAC_MD5,  
+				0xb3, 0x41, 0xaa, 0x06, 0x5c, 0x38, 0x50,0xed ,0xd6 , 0xa6,0x1e ,0x15 ,0x0d , 0x6a,0x5f ,0xd3 , 0, 0, 0, 0
+			  ),
+	SAD_ENTRY(	192,168,12,214, 255,255,255,0, 
+				0x1235, 
+				IPSEC_PROTO_AH	, IPSEC_TRANSPORT, 
+				0, 
+				 0,0,0,0,0,0,0,0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+				IPSEC_HMAC_MD5,  
+				0xb3, 0x41, 0xaa, 0x06, 0x5c, 0x38, 0x50,0xed ,0xd6 , 0xa6,0x1e ,0x15 ,0x0d , 0x6a,0x5f ,0xd3 , 0, 0, 0, 0
+			  ),
+	EMPTY_SAD_ENTRY,			  
+	EMPTY_SAD_ENTRY,
+	EMPTY_SAD_ENTRY
+} ;
+
+
+*/
+
+
+/* SPD configuration data */
+spd_entry outbound_spd_config[IPSEC_MAX_SPD_ENTRIES] = {
+/*           		source                            destination            protocol  ports               policy          SA pointer 
+ *          		address          network          address      network             src    dest                              */
+	{ SPD_ENTRY( 192,168,12,211,  255,255,255,0, 192,168,12,201, 255,255,255,0, 0, 		0,     0,     POLICY_BYPASS,   &outbound_sad_config[0]) },
+	{ SPD_ENTRY( 192,168,12,211,  255,255,255,0, 192,168,12,207, 255,255,255,0, 0, 		0,     0,     POLICY_BYPASS,   &outbound_sad_config[0]) },
+	{ SPD_ENTRY( 192,168,12,211,  255,255,255,0, 192,168,12,208, 255,255,255,0, 0, 		0,     0,     POLICY_BYPASS,   &outbound_sad_config[0]) },
+	{ SPD_ENTRY( 192,168,12,211,  255,255,255,0, 192,168,12,214, 255,255,255,0, 0, 		0,     0,     POLICY_BYPASS,   &outbound_sad_config[1]) },
+	{ SPD_ENTRY( 192,168,12,211,  255,255,255,0, 192,168,12,218, 255,255,255,0, 0, 		0,     0,     POLICY_BYPASS,   &outbound_sad_config[0]) },	
+	{ SPD_ENTRY( 192,168,12,211,  255,255,255,0, 192,168,12,220, 255,255,255,0, 0, 		0,     0,     POLICY_BYPASS,   &outbound_sad_config[1]) },
+	EMPTY_SPD_ENTRY,
+	EMPTY_SPD_ENTRY
+} ;
+
+
+
+
+
+extern db_set_netif	db_sets[];
+db_set_netif 	*databases; 	/**< reference to the SPD and SA configuration*/
+struct netif	mapped_netif;	/**< handler of physical output device  	*/
+__u32			tunnel_src_addr;/**< tunnel source address (external address this IPsec device) */
+__u32			tunnel_dst_addr;/**< tunnel destination address (external address the other IPsec tunnel endpoint) */
+
+
+/**
+ * This is just used to provide an consisstend interface. This function has no functionality.
+ *
+ * @param  netif  initialized lwIP network interface data structure of this device
+ * @return void
+ */
+void ipsecdev_service(struct netif *netif)
+{
+	struct netif *i ;
+	IPSEC_LOG_TRC(IPSEC_TRACE_ENTER, "ipsecdev_service", ("netif=%p", (void *)netif) );
+	i = netif ;
+	IPSEC_LOG_TRC(IPSEC_TRACE_RETURN, "ipsecdev_service", ("void") );
+	return ;
+}
+
+
+/**
+ * This function is used to process incomming IP packets.
+ *
+ * This function is called by the physical network driver when a new packet has been
+ * received. To decide how to handle the packet, the Security Policy Database 
+ * is called. ESP and AH packets are directly forwarded to ipsec_input() while other 
+ * packets must pass the SPD lookup.
+ *
+ * @param p      pbuf containing the received packet
+ * @param inp    lwIP network interface data structure for this device. The structure must be
+ *               initialized with IP, netmask and gateway address.
+ * @return err_t return code
+ */
+err_t ipsecdev_input(struct pbuf *p, struct netif *inp)
+{
+	int retcode;
+	int payload_offset	= 0;
+	int payload_size	= 0;
+	spd_entry		*spd ;
+
+	struct pbuf *p_cpy = NULL;
+	
+
+	IPSEC_LOG_TRC(IPSEC_TRACE_ENTER, "ipsecdev_input", ("p=%p, inp=%p", (void *)p, (void *)inp) );
+	
+	//IPSEC_DUMP_BUFFER("ipsecdev_input", p->payload, 0, p->len) ;
+	
+	//if need to Reassamble
+	 struct ip_hdr  * iphdr =(struct ip_hdr  *)((unsigned char *)p->payload);
+	 if ((IPH_OFFSET(iphdr) & PP_HTONS(IP_OFFMASK | IP_MF)) != 0) {
+			int r  = ip_input(p, inp);
+			return r ;
+   	 }
+		
+		
+	else {
+
+		// we need to copy  all the buf to only one pubf 
+		struct pbuf *p_p = p;
+		p_cpy = p;
+		if(p->next != NULL)
+	 	{
+			p_cpy = pbuf_alloc(PBUF_RAW, p_p->tot_len , PBUF_RAM);
+		 	if(p_cpy != NULL) {
+				p_cpy->next = NULL;
+				p_cpy->len = p_p->tot_len ;
+				p_cpy->tot_len = p_p->tot_len;
+				//p_cpy->ref = p_p ->ref;
+				// we need to copy all the payloads
+				void * payload  =p_cpy ->payload;
+				while(p_p != NULL){
+
+					//IPSEC_DUMP_BUFFER("ipsecdev_input", p_p->payload, 0, p_p->len) ;
+					memcpy(payload, p_p->payload, p_p->len);
+					payload= payload+p_p->len;
+					p_p = p_p -> next; 
+					
+				}
+				
+			}
+		//IPSEC_DUMP_BUFFER("whole packet after copy", p_cpy->payload, 0, p_cpy->len) ;
+			
+		}
+		
+		if( ((ipsec_ip_header*)(p_cpy->payload))->protocol == IPSEC_PROTO_ESP || ((ipsec_ip_header*)(p_cpy->payload))->protocol == IPSEC_PROTO_AH)
+		{
+			
+			retcode = ipsec_input(p_cpy->payload, p_cpy->len, (int *)&payload_offset, (int *)&payload_size, databases);	
+			if(retcode == IPSEC_STATUS_SUCCESS)
+			{
+				// @todo Attention: the pbuf structure should be updated using pbuf_header()
+				// remove obsolete ESP headers 
+				
+				p_cpy->payload = (unsigned char *)(p_cpy->payload) + payload_offset;
+				p_cpy->len = payload_size;
+				p_cpy->tot_len = payload_size;
+				//IPSEC_DUMP_BUFFER("ipsecdev_input: packet after decapsulation", p_cpy->payload, 0,p_cpy->len) ;
+				IPSEC_LOG_MSG("ipsecdev_input", ("fwd decapsulated IPsec packet to ip_input()") );
+				retcode = ip_input(p_cpy, inp);		
+				IPSEC_LOG_TRC(IPSEC_TRACE_RETURN, "ipsecdev_input", ("retcode = %d", retcode) );
+				return retcode;
+
+			}
+			else
+			{
+				IPSEC_LOG_ERR("ipsecdev_input", retcode, ("error on ipsec_input() processing (retcode = %d)", retcode));
+				pbuf_free(p) ;
+			}		
+		}
+		else
+		{
+			// check what the policy says about non-IPsec traffic 
+			spd = ipsec_spd_lookup(p->payload, &databases->inbound_spd) ;
+			if(spd == NULL)
+			{
+				IPSEC_LOG_ERR("ipsecdev_input", IPSEC_STATUS_NO_POLICY_FOUND, ("no matching SPD policy found")) ;
+				pbuf_free(p) ;
+			}
+			else
+			{
+				switch(spd->policy)
+			 	{
+					case POLICY_APPLY:
+						IPSEC_LOG_AUD("ipsecdev_input", IPSEC_AUDIT_APPLY, ("POLICY_APPLY: got non-IPsec packet which should be one")) ;
+						pbuf_free(p) ;
+						break;
+					case POLICY_DISCARD:
+						IPSEC_LOG_AUD("ipsecdev_input", IPSEC_AUDIT_DISCARD, ("POLICY_DISCARD: dropping packet")) ;
+						pbuf_free(p) ;
+						break;
+					case POLICY_BYPASS:
+						IPSEC_LOG_AUD("ipsecdev_input", IPSEC_AUDIT_BYPASS, ("POLICY_BYPASS: forwarding packet to ip_input")) ;
+						int r = ip_input(p, inp);
+						break;
+					default:
+						pbuf_free(p) ;
+						IPSEC_LOG_ERR("ipsecdev_input", IPSEC_STATUS_FAILURE, ("IPSEC_STATUS_FAILURE: dropping packet")) ;
+						IPSEC_LOG_AUD("ipsecdev_input", IPSEC_AUDIT_FAILURE, ("unknown Security Policy: dropping packet")) ;
+				} 
+			}
+		}
+	}
+	
+	//usually return ERR_OK as lwIP does 
+	IPSEC_LOG_TRC(IPSEC_TRACE_RETURN, "ipsecdev_input", ("retcode = %d", ERR_OK) );
+	return ERR_OK;
+}
+
+
+/**
+ * This function is used to send a packet out to the network device.
+ *
+ * IPsec processing for outbound traffic is done here before forwarding the IP packet 
+ * to the physical network device. The SPD is queried in order to know how
+ * the packet must be handled.
+ *
+ * @param  netif   initialized lwIP network interface data structure of this device
+ * @param  p       pbuf containing a complete IP packet as payload
+ * @param  ipaddr  destination IP address
+ * @return err_t   status
+ */
+err_t ipsecdev_output(struct netif *netif, struct pbuf *p, struct ip_addr *ipaddr)
+{
+
+	
+	struct pbuf *p_cpy = NULL;
+	int payload_size ;
+	int payload_offset ;
+	spd_entry *spd ;
+	ipsec_status status ;
+	struct ip_addr dest_addr;
+	int retcode;
+	
+	
+	int need_fragment = 0 ;
+
+	IPSEC_LOG_TRC(IPSEC_TRACE_ENTER, 
+	              "ipsecdev_output:", 
+				  ("netif=%p, p=%p, ipaddr=%p", (void *)netif, (void *)p, (void *)ipaddr ) 
+				 );
+	//IPSEC_DUMP_BUFFER("ipsecdev_output:", p->payload, 0, p->len) ;
+
+
+	// backup of physical destination IP address (inner IP header may become encrypted) 
+	memcpy(&dest_addr, ipaddr, sizeof(struct ip_addr));
+
+	 if (databases==NULL){
+		
+		ipsecdev_init(netif);
+		if (databases==NULL){
+			printf("databases is null.. forward to netif->output() .,retcode %d \n",retcode);
+			return retcode;
+		}
+	}
+
+	spd = ipsec_spd_lookup((ipsec_ip_header*)p->payload, &databases->outbound_spd) ;
+	
+
+	if(spd == NULL)
+	{
+		IPSEC_LOG_ERR("ipsecdev_output", IPSEC_STATUS_NO_POLICY_FOUND, ("no matching SPD policy found")) ;
+		//free local pbuf here 
+		pbuf_free(p);
+		IPSEC_LOG_TRC(IPSEC_TRACE_RETURN, "ipsecdev_output", ("retcode = %d", ERR_CONN) );
+		return ERR_CONN ;
+	}
+
+	switch(spd->policy)
+ 	{
+		case POLICY_APPLY:																		
+				IPSEC_LOG_AUD("ipsecdev_output", IPSEC_AUDIT_APPLY, ("POLICY_APPLY: processing IPsec packet")) ;
+
+				struct pbuf *bpbuf = p;
+				// we need to copy  all the buf to only one pubf 
+				struct pbuf *p_p = p;
+				bpbuf = p;
+				if(p->next != NULL)
+	 			{
+					need_fragment = 1 ; 
+					//IP to make size for the ipsec headers.
+					bpbuf = pbuf_alloc(PBUF_IP, p_p->tot_len , PBUF_RAM);
+		 			if(p_cpy != NULL) {
+						bpbuf->next = NULL;
+						bpbuf->len = p_p->tot_len ;
+						bpbuf->tot_len = p_p->tot_len;
+						//p_cpy->ref = p_p ->ref;
+						// we need to copy all the payloads
+						void * payload  =bpbuf->payload;
+						while(p_p != NULL){
+							memcpy(payload, p_p->payload, p_p->len);
+							payload= payload+p_p->len;
+							p_p = p_p -> next; 
+						}
+				
+					}
+				//print the new bubf 
+				IPSEC_DUMP_BUFFER("ipsecdev_input", bpbuf->payload, 0, p_cpy->len) ;
+				// to make our control with p ; 
+				p =bpbuf;	
+				}
+
+				// @todo lwIP TCP ESP outbound processing needs to add data after the original packet.
+				//        Since the lwIP TCP does leave any room after the original packet, we 
+				//        copy the packet into a larger buffer. This step can be avoided if enough
+				//        room is left after the packet when TCP allocates memory.
+				//
+				p_cpy = p;
+				
+				if(spd->sa->protocol == IPSEC_PROTO_ESP)
+				{
+					// alloc 50 more bytes for ESP trailer and the optional ESP authentication data
+				  	// p_cpy = pbuf_alloc(PBUF_RAW, p->len + 50, PBUF_POOL);
+					 p_cpy = pbuf_alloc(PBUF_IP, p->len + 50, PBUF_POOL);
+					if(p_cpy != NULL) {
+						memcpy(p_cpy->payload, p->payload, p->len);
+						p_cpy->next = NULL;
+						p_cpy->len = p->len + 50;
+						p_cpy->tot_len = p->tot_len + 50;
+						p_cpy->ref = p->ref;
+						IPSEC_LOG_MSG("ipsecdev_output", ("lwIP ESP TCP workaround: successfully allocated new pbuf (tot_len = %d)", p_cpy->tot_len) );
+					}
+					else {
+						IPSEC_LOG_ERR("ipsecdev_output", IPSEC_AUDIT_FAILURE, ("can't alloc new pbuf for lwIP ESP TCP workaround!") ) ;
+					}
+				}
+				
+				
+				status = ipsec_output(p_cpy->payload, p_cpy->len, &payload_offset, &payload_size, tunnel_src_addr, tunnel_dst_addr, spd) ;
+				
+				//IPSEC_DUMP_BUFFER("ipsecdev_output after AH and ESP ", p_cpy->payload, 0, p_cpy->len) ;
+				//printf("status is %d\n",status);
+				if(status == IPSEC_STATUS_SUCCESS)
+				{
+					// adjust pbuf structure according to the real packet size 
+					p_cpy->payload = (unsigned char *)(p_cpy->payload) + payload_offset;
+					p_cpy->len = payload_size;
+					p_cpy->tot_len = payload_size;
+					//IPSEC_DUMP_BUFFER("ipsecdev_output after encrypt OR AH:",p_cpy->payload, 0, p_cpy->len) ;
+				  	IPSEC_LOG_MSG("ipsec_output", ("fwd IPsec packet to HW mapped device") );
+ 					if (netif->mtu && (p_cpy->tot_len > netif->mtu))
+						retcode= ip_frag(p_cpy, netif, ipaddr);
+					else
+						retcode = netif->output(netif, p_cpy, ipaddr);
+					
+				}
+				else {
+					IPSEC_LOG_ERR("ipsec_output", status, ("error on ipsec_output() processing"));
+					IPSEC_LOG_TRC(IPSEC_TRACE_RETURN, "ipsecdev_output", ("retcode = %d", ERR_CONN) );
+				}
+				
+				if(spd->sa->protocol == IPSEC_PROTO_ESP)
+					pbuf_free(p_cpy);
+				if (need_fragment)
+					pbuf_free(bpbuf);
+				
+				IPSEC_LOG_TRC(IPSEC_TRACE_RETURN, "ipsecdev_output", ("retcode = %d", ERR_OK) );
+			return ERR_OK;
+			break;
+		case POLICY_DISCARD:
+				IPSEC_LOG_AUD("ipsecdev_output", IPSEC_AUDIT_DISCARD, ("POLICY_DISCARD: dropping packet")) ;
+			break;
+		case POLICY_BYPASS:
+				IPSEC_LOG_AUD("ipsecdev_output", IPSEC_AUDIT_BYPASS, ("POLICY_BYPASS: forwarding packet to ip_output")) ;
+				if (netif->mtu && (p->tot_len > netif->mtu))
+					retcode =ip_frag(p, netif,ipaddr);
+				else
+					retcode = netif->output(netif, p, &dest_addr);
+				
+				IPSEC_LOG_TRC(IPSEC_TRACE_RETURN, "ipsecdev_output", ("retcode = %d", retcode) );
+				return retcode;
+			break;
+		default:
+			IPSEC_LOG_ERR("ipsecdev_input", IPSEC_STATUS_FAILURE, ("POLICY_DIRCARD: dropping packet")) ;
+			IPSEC_LOG_AUD("ipsecdev_input", IPSEC_AUDIT_FAILURE, ("unknown Security Policy: dropping packet")) ;
+	}
+
+	IPSEC_LOG_TRC(IPSEC_TRACE_RETURN, "ipsecdev_output", ("return = %d", ERR_CONN) );
+	return ERR_CONN;
+
+	
+}
+
+
+/**
+ * This function is used to send a packet directly out of the network device.
+ *
+ * The packet is directly sent as-is the network device output function.
+ * It is used to serve ARP traffic.
+ *
+ * @param  netif  initialized lwIP network interface data structure of this device
+ * @param  p      pbuf containing a complete IP packet as payload
+ * @return err_t  status
+ */
+err_t ipsecdev_netlink_output(struct netif *netif, struct pbuf *p)
+{	
+	int retcode;
+	IPSEC_LOG_TRC(IPSEC_TRACE_ENTER, 
+	              "ipsecdev_netlink_output", 
+				  ("netif=%p, p=%d", (void *)netif, (void *)p ) 
+				 );
+	IPSEC_LOG_MSG("ipsecdev_netlink_output", ("fwd from interface '%c%c' to real HW linkoutput",  netif->name[0], netif->name[1]) );
+
+	retcode = mapped_netif.linkoutput(&mapped_netif, p);
+	//retcode = netif->linkoutput(netif, p);
+	IPSEC_LOG_TRC(IPSEC_TRACE_RETURN, "ipsecdev_netlink_output", ("retcode = %d", retcode) );
+	return retcode; 
+}
+
+
+/**
+ * Initialize the ipsec network device
+ *
+ * This function must be called prior to any other operation with this device.
+ *
+ * @param  netif  lwIP network interface data structure for this device. The structure must be
+ *                initialized with IP, netmask and gateway address.
+ * @return err_t  return code
+ */
+err_t ipsecdev_init(struct netif *netif)
+{
+	struct ipsecdev_stats *ipsecdev_stats;
+
+	IPSEC_LOG_TRC(IPSEC_TRACE_ENTER, 
+	              "ipsecdev_init", 
+				  ("netif=%p", (void *)netif ) 
+				 );
+
+
+	ipsecdev_stats = mem_malloc(sizeof(struct ipsecdev_stats));
+	if (ipsecdev_stats == NULL)
+	{
+  		IPSEC_LOG_DBG("ipsecdev_init", IPSEC_STATUS_DATA_SIZE_ERROR, ("out of memory for ipsecdev_stats"));
+		IPSEC_LOG_TRC(IPSEC_TRACE_RETURN, "ipsecdev_init", ("retcode = %d", ERR_MEM) );
+		return ERR_MEM;
+	}
+
+	
+
+	/* use the same output function for all operations */
+	//netif->output = (void *)ipsecdev_output;				/* usually called if the IP module wants to send data */
+	//netif->linkoutput = (void *)ipsecdev_netlink_output;	/* usually called if the ARP module wants to send data "as-is" */
+
+	/**@todo this should be somewhere else */
+	/* initialize the db_sets structure */
+	memset(db_sets, 0, IPSEC_NR_NETIFS*sizeof(db_set_netif)) ;
+
+	//printf("ipsec_spd_load_dbs\n");
+	/* setup ipsec databases/configuration */
+	databases = ipsec_spd_load_dbs(inbound_spd_config, outbound_spd_config, inbound_sad_config, outbound_sad_config) ;
+	if (databases == NULL)
+	{
+		IPSEC_LOG_ERR("ipsecdev_init", -1, ("not able to load SPD and SA configuration for ipsec device")) ;
+	}
+
+	//ipsecdev_stats->sentbytes = 0;			/* reset statistic */
+	//netif->state = ipsecdev_stats;			/* assign statistic */
+	
+	ipsec_set_tunnel("192.168.12.211","192.168.12.214");
+
+	IPSEC_LOG_TRC(IPSEC_TRACE_RETURN, "ipsecdev_init", ("retcode = %d", IPSEC_STATUS_SUCCESS) );
+	return IPSEC_STATUS_SUCCESS;
+}
+
+/**
+ * Setter function for tunnel source and destination address
+ *
+ * @param  src  source address as string (i.g. "192.168.1.3")
+ * @param  dst  destination address as string (i.g. "192.168.1.5")
+ * @return void
+ */
+void ipsec_set_tunnel(char *src, char *dst)
+{
+	tunnel_src_addr = ipsec_inet_addr(src) ;
+	tunnel_dst_addr = ipsec_inet_addr(dst) ;
+	return ;
+}
+
+void pbuf_debug_print( char * massege , struct pbuf * puf )
+{
+ int level=1;
+ printf("==================\n");
+ printf("%s\n",massege);	
+ while (puf != NULL){
+	printf("==================\n");
+	printf("pbuf(%d) => tot_len  =%d\n",level,puf->tot_len);
+	printf("pbuf(%d) => len  =%d\n",level,puf->len);
+	if (puf->next == NULL){
+		printf("pbuf(%d) => next  =  NULL\n",level);
+		break;
+ 	}
+	else{
+		printf("pbuf(%d) => len  = NOT NULL \n",level);
+		puf = puf->next ;
+		level++;
+ 	} 
+		
+ }
+printf("==================\n");
+}
+
