@@ -49,7 +49,7 @@
 #include "message.h"
 #include "monitor.h"
 #include "transport.h"
-#include "udp.h"
+#include "isa_udp.h"
 #include "udp_encap.h"
 #include "util.h"
 #include "virtual.h"
@@ -68,7 +68,7 @@ int		  udp_fd_isset(struct transport *, fd_set *);
 void		  udp_get_dst(struct transport *, struct sockaddr **);
 void		  udp_get_src(struct transport *, struct sockaddr **);
 char		 *udp_decode_ids(struct transport *);
-void		  udp_remove(struct transport *);
+void		  udp_remove_isakmp(struct transport *);
 
 static struct transport *udp_encap_create(char *);
 static void		 udp_encap_report(struct transport *);
@@ -81,7 +81,7 @@ static struct transport_vtbl udp_encap_transport_vtbl = {
 	{ 0 }, "udp_encap",
 	udp_encap_create,
 	0,
-	udp_remove,
+	udp_remove_isakmp,
 	udp_encap_report,
 	udp_fd_set,
 	udp_fd_isset,
@@ -195,7 +195,7 @@ err:
 	if (t) {
 		/* Already closed.  */
 		t->s = -1;
-		udp_remove(&t->transport);
+		udp_remove_isakmp(&t->transport);
 	}
 	return 0;
 }

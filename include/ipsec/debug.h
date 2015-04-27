@@ -43,7 +43,7 @@
 #define __IPSEC_DEBUG_H__
 
 #include <stdio.h>
-#include "ipsec/util.h"
+#include "ipsec/ips_util.h"
 
 /*! \brief If IPSEC_ERROR is defined, severe configuration errors and <br>
  *         not manageable states such as running out of memory are logged. <br>

@@ -60,11 +60,11 @@
 
 #include <string.h>
 
-#include "ipsec/ipsec.h"
-#include "ipsec/util.h"
+#include "ipsec/ips_ipsec.h"
+#include "ipsec/ips_util.h"
 #include "ipsec/debug.h"
 
-#include "ipsec/sa.h"
+#include "ipsec/ipsec_sa.h"
 #include "ipsec/ipsecdes.h"
 #include "ipsec/ipsecmd5.h"
 #include "ipsec/ipsecsha1.h"

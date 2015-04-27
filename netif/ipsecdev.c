@@ -75,9 +75,9 @@
 #include "lwip/def.h"
 
 #include "ipsec/debug.h"
-#include "ipsec/ipsec.h"
-#include "ipsec/util.h"
-#include "ipsec/sa.h"
+#include "ipsec/ips_ipsec.h"
+#include "ipsec/ips_util.h"
+#include "ipsec/ipsec_sa.h"
 
 #include <stdio.h>
 
@@ -169,7 +169,7 @@ spd_entry inbound_spd_config[IPSEC_MAX_SAD_ENTRIES] = {
 	{ SPD_ENTRY(  192,168,12,208, 255,255,255,0, 192,168,12,211,  255,255,255,0, 0, 		 0,     0,     POLICY_BYPASS,   &inbound_sad_config[0]) },
 	{ SPD_ENTRY(  192,168,12,214, 255,255,255,0, 192,168,12,211,  255,255,255,0, 0, 		 0,     0,     POLICY_BYPASS,   &inbound_sad_config[1]) },
 	{ SPD_ENTRY(  192,168,12,218, 255,255,255,0, 192,168,12,211,  255,255,255,0, 0, 		 0,     0,     POLICY_BYPASS,   &inbound_sad_config[0]) },
-	{ SPD_ENTRY(  192,168,12,220, 255,255,255,0, 192,168,12,211,  255,255,255,0, 0, 		 0,     0,     POLICY_BYPASS,   &inbound_sad_config[1]) },
+	{ SPD_ENTRY(  134,169,60,65, 255,255,255,0, 134,169,60,62,  255,255,255,0, 0, 		 0,     0,     POLICY_BYPASS,   &inbound_sad_config[1]) },
 	EMPTY_SPD_ENTRY,
 	EMPTY_SPD_ENTRY
 } ;
@@ -236,14 +236,14 @@ sad_entry outbound_sad_config[IPSEC_MAX_SAD_ENTRIES] = {
 
 /* SPD configuration data */
 spd_entry outbound_spd_config[IPSEC_MAX_SPD_ENTRIES] = {
-/*           		source                            destination            protocol  ports               policy          SA pointer 
- *          		address          network          address      network             src    dest                              */
-	{ SPD_ENTRY( 192,168,12,211,  255,255,255,0, 192,168,12,201, 255,255,255,0, 0, 		0,     0,     POLICY_BYPASS,   &outbound_sad_config[0]) },
-	{ SPD_ENTRY( 192,168,12,211,  255,255,255,0, 192,168,12,207, 255,255,255,0, 0, 		0,     0,     POLICY_BYPASS,   &outbound_sad_config[0]) },
-	{ SPD_ENTRY( 192,168,12,211,  255,255,255,0, 192,168,12,208, 255,255,255,0, 0, 		0,     0,     POLICY_BYPASS,   &outbound_sad_config[0]) },
-	{ SPD_ENTRY( 192,168,12,211,  255,255,255,0, 192,168,12,214, 255,255,255,0, 0, 		0,     0,     POLICY_BYPASS,   &outbound_sad_config[1]) },
-	{ SPD_ENTRY( 192,168,12,211,  255,255,255,0, 192,168,12,218, 255,255,255,0, 0, 		0,     0,     POLICY_BYPASS,   &outbound_sad_config[0]) },	
-	{ SPD_ENTRY( 192,168,12,211,  255,255,255,0, 192,168,12,220, 255,255,255,0, 0, 		0,     0,     POLICY_BYPASS,   &outbound_sad_config[1]) },
+/*           		source                            destination          		protocol		ports               	policy          SA pointer 
+ *          		address          network          address      network             			src   dest                              */
+	{ SPD_ENTRY( 192,168,12,211,  255,255,255,0, 192,168,12,201, 255,255,255,	0,	0, 		0,     0,     POLICY_BYPASS,   &outbound_sad_config[0]) },
+	{ SPD_ENTRY( 192,168,12,211,  255,255,255,0, 192,168,12,207, 255,255,255,	0,	0, 		0,     0,     POLICY_BYPASS,   &outbound_sad_config[0]) },
+	{ SPD_ENTRY( 192,168,12,211,  255,255,255,0, 192,168,12,208, 255,255,255,	0, 	0, 		0,     0,     POLICY_BYPASS,   &outbound_sad_config[0]) },
+	{ SPD_ENTRY( 192,168,12,211,  255,255,255,0, 192,168,12,214, 255,255,255,	0, 	0, 		0,     0,     POLICY_BYPASS,   &outbound_sad_config[1]) },
+	{ SPD_ENTRY( 192,168,12,211,  255,255,255,0, 192,168,12,218, 255,255,255,	0, 	0, 		0,     0,     POLICY_BYPASS,   &outbound_sad_config[0]) },	
+	{ SPD_ENTRY( 134,169,60,62,   255,255,255,0, 134,169,60,65,  255,255,255,	0, 	0, 		 0,     0,     POLICY_BYPASS,   &inbound_sad_config[1]) },
 	EMPTY_SPD_ENTRY,
 	EMPTY_SPD_ENTRY
 } ;
@@ -643,16 +643,18 @@ err_t ipsecdev_init(struct netif *netif)
 
 	//printf("ipsec_spd_load_dbs\n");
 	/* setup ipsec databases/configuration */
-	databases = ipsec_spd_load_dbs(inbound_spd_config, outbound_spd_config, inbound_sad_config, outbound_sad_config) ;
-	if (databases == NULL)
-	{
-		IPSEC_LOG_ERR("ipsecdev_init", -1, ("not able to load SPD and SA configuration for ipsec device")) ;
+	if (databases == NULL){
+		databases = ipsec_spd_load_dbs(inbound_spd_config, outbound_spd_config, inbound_sad_config, outbound_sad_config) ;
+		if (databases == NULL)
+			{
+				IPSEC_LOG_ERR("ipsecdev_init", -1, ("not able to load SPD and SA configuration for ipsec device")) ;
+			}
 	}
-
+	
 	//ipsecdev_stats->sentbytes = 0;			/* reset statistic */
 	//netif->state = ipsecdev_stats;			/* assign statistic */
 	
-	ipsec_set_tunnel("192.168.12.211","192.168.12.214");
+	//ipsec_set_tunnel("192.168.12.211","192.168.12.214");
 
 	IPSEC_LOG_TRC(IPSEC_TRACE_RETURN, "ipsecdev_init", ("retcode = %d", IPSEC_STATUS_SUCCESS) );
 	return IPSEC_STATUS_SUCCESS;

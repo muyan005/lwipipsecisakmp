@@ -1,5 +1,5 @@
 /*
- * embedded IPsec
+ * embedded IPsec	
  * Copyright (c) 2003 Niklaus Schild and Christian Scheurer, HTI Biel/Bienne
  * All rights reserved.
  *
@@ -27,46 +27,47 @@
  *
  */
 
-/** @file ah.h
- *  @brief Header of IP Authentication Header (AH)
+/** @file ipsec.h
+ *  @brief Header of embedded IPsec implementation
  *
- *  @author Christian Scheurer <http://www.christianscheurer.ch>
+ *  @author Christian Scheurer <http://www.christianscheurer.ch> 
+ *
  *
  * This document is part of <EM>embedded IPsec<BR>
  * Copyright (c) 2003 Niklaus Schild and Christian Scheurer, HTI Biel/Bienne<BR>
- * All rights reserved.<BR>
- * This file contains code from the OpenSSL Project<BR>
- * portions Copyright (c) 1998-2003 OpenSSL (www.openssl.org)
- *</EM><HR>
+ * All rights reserved.</EM><HR>
  */
 
-#ifndef __AH_H__
-#define __AH_H__
 
-#include "ipsec/ipsec_sa.h"
-#include "ipsec/ips_util.h"
+#ifndef __IPS_IPSEC_H__
+#define __IPS_IPSEC_H__
 
 
-#define IPSEC_AH_HDR_SIZE (12)			/**< AH header size without ICV */
+//#include "ipsec/sa.h" //-------
 
 
-typedef struct ah_hdr_struct 
-{
-  __u8	nexthdr;	/**< type of next payload (protocol nr) */
-  __u8	len;		/**< type of service */
-  __u16 reserved;	/**< MUST be 0x0000 (reserved for future use) */
-  __u32 spi;		/**< Security Parameter Index (0, 1..255 are special cases RFC2402, p.4) */
-  __u32 sequence;	/**< sequence number (increasing strictly), used by anti-replay feature */
-  __u8  ah_data[IPSEC_AUTH_ICV]; /**< ICV (Integrity Check Value), variable-length data. 12 bytes (96 bits) for HMAC-SHA1-96 and HMAC-MD5-96 */
-} ipsec_ah_header;
+#include "ipsec/types.h"
+#include "netif/ipsecdev.h"
 
 
-extern __u32 ipsec_ah_bitmap; 			/**< bitmap used for anti-replay service */
-extern __u32 ipsec_ah_lastSeq;			/**< last seen sequence number, used for anit-replay service */
+#define IPSEC_DES_KEY_LEN		(8)							/**< Defines the size of a DES key in bytes */
+#define IPSEC_3DES_KEY_LEN		(IPSEC_DES_KEY_LEN*3)		/**< Defines the length of a 3DES key in bytes */
+#define IPSEC_MAX_ENCKEY_LEN	(IPSEC_3DES_KEY_LEN)		/**< Defines the maximum encryption key length of our IPsec system */
 
-//int ipsec_ah_check(ipsec_ip_header *, int *, int *, void *);
-//int ipsec_ah_encapsulate(ipsec_ip_header *, int *, int *, void *, __u32, __u32);
+#define IPSEC_AUTH_ICV			(12)						/**< Defines the authentication key length in bytes (12 bytes for 96bit keys) */
+#define IPSEC_AUTH_MD5_KEY_LEN	(16)						/**< Length of MD5 secret key  */
+#define IPSEC_AUTH_SHA1_KEY_LEN	(20)						/**< Length of SHA1 secret key */
+#define IPSEC_MAX_AUTHKEY_LEN   (IPSEC_AUTH_SHA1_KEY_LEN) 	/**< Maximum length of authentication keys */
 
-#endif
+#define IPSEC_MIN_IPHDR_SIZE	(20) 	/**< Defines the minimum IP header size (in bytes).*/
+#define IPSEC_SEQ_MAX_WINDOW	(32)	/**< Defines the maximum window for Sequence Number checks (used as anti-replay protection) */
 
 
+//int ipsec_input(unsigned char *, int, int *, int *, void *);
+//int ipsec_output(unsigned char *, int , int *, int *, __u32, __u32, void *);
+
+//int ipsec_input(unsigned char *, int, int *, int *, db_set_netif *);
+//int ipsec_output(unsigned char *, int , int *, int *, __u32, __u32, spd_entry *);
+
+
+#endif 

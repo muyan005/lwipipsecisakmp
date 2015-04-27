@@ -46,7 +46,7 @@
 #include "connection.h"
 #include "doi.h"
 #include "exchange.h"
-#include "init.h"
+#include "isa_init.h"
 #include "isakmp.h"
 #include "log.h"
 #include "monitor.h"

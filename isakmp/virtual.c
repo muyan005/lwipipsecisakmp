@@ -47,7 +47,7 @@
 #include "nat_traversal.h"
 #include "transport.h"
 #include "virtual.h"
-#include "udp.h"
+#include "isa_udp.h"
 #include "util.h"
 
 #include "udp_encap.h"

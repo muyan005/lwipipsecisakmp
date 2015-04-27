@@ -43,7 +43,7 @@
 #ifndef __ESP_H__
 #define __ESP_H__
 
-#include "ipsec/sa.h"
+#include "ipsec/ipsec_sa.h"
 
 #define IPSEC_ESP_IV_SIZE		(8)			/**< Defines the size (in bytes) of the Initialization Vector used by DES and 3DES */
 #define IPSEC_ESP_SPI_SIZE		(4)			/**< Defines the size (in bytes) of the SPI of an ESP packet */

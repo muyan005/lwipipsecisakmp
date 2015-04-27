@@ -487,7 +487,7 @@ monitor_loop(int debug)
 		log_to(0);
 
 	for (;;) {
-		must_reerrnoad(&msgcode, sizeof msgcode);
+		must_read(&msgcode, sizeof msgcode);
 
 		switch (msgcode) {
 		case MONITOR_GET_FD:
